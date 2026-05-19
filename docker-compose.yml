@@ -1,0 +1,108 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: akilliatolye_postgres
+    environment:
+      POSTGRES_USER: akilliatolye_user
+      POSTGRES_PASSWORD: akilliatolye_password
+      POSTGRES_DB: akilliatolye_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U akilliatolye_user -d akilliatolye_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: akilliatolye_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: akilliatolye_rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: akilliatolye_user
+      RABBITMQ_DEFAULT_PASS: akilliatolye_password
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend_api:
+    build:
+      context: ./backend_python
+      dockerfile: Dockerfile
+    container_name: akilliatolye_backend_api
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://akilliatolye_user:akilliatolye_password@postgres:5432/akilliatolye_db
+      - REDIS_URL=redis://redis:6379/0
+      - RABBITMQ_URL=amqp://akilliatolye_user:akilliatolye_password@rabbitmq:5672/
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  backend_consumer:
+    build:
+      context: ./backend_python
+      dockerfile: Dockerfile
+    container_name: akilliatolye_backend_consumer
+    command: ["python", "consumer.py"]
+    environment:
+      - DATABASE_URL=postgresql://akilliatolye_user:akilliatolye_password@postgres:5432/akilliatolye_db
+      - RABBITMQ_URL=amqp://akilliatolye_user:akilliatolye_password@rabbitmq:5672/
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend_ui:
+    build:
+      context: ./frontend_nextjs
+      dockerfile: Dockerfile
+    container_name: akilliatolye_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - BACKEND_API_URL=http://backend_api:8000
+    depends_on:
+      - backend_api
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
