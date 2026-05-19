@@ -17,26 +17,22 @@ class LoginRequest(BaseModel):
 
 
 @router.post("/login", summary="Kullanıcı Girişi (Mock)")
-async def login(req: LoginRequest, conn: asyncpg.Connection = Depends(get_db)):
+async def login(req: LoginRequest):
     """
-    Kullanıcı girişi yapar. Gerçekte şifre doğrulaması veya JWT üretimi yapılmalıdır.
-    Bu aşamada sadece JSONB içinden emaili doğrular.
+    Kullanıcı girişi yapar (Hardcoded Mock).
     """
-    user = await UserRepository.get_by_email(conn, req.email)
-    if not user:
-        raise HTTPException(status_code=401, detail="Geçersiz email veya şifre")
-
-    # TODO: Gerçek şifre kontrolü burada yapılmalıdır
-    
-    return {
-        "status": "success",
-        "message": "Giriş başarılı",
-        "token": f"mock_token_for_{user.id}",
-        "user": {
-            "id": user.id,
-            "email": user.value.get("email"),
-            "role": user.group_type,
-            "name": user.value.get("name", ""),
-            "surname": user.value.get("surname", "")
+    if req.email == "admin@akilliatolye.com":
+        return {
+            "status": "success",
+            "message": "Giriş başarılı",
+            "token": "mock_admin_token_123",
+            "user": {
+                "id": 1,
+                "email": "admin@akilliatolye.com",
+                "role": "supervisor",
+                "name": "Admin",
+                "surname": "Atölye"
+            }
         }
-    }
+    
+    raise HTTPException(status_code=401, detail="Geçersiz email veya şifre")
